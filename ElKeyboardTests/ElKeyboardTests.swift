@@ -1,0 +1,17 @@
+//
+//  ElKeyboardTests.swift
+//  ElKeyboardTests
+//
+//  Created by Mathe Eliel on 10/05/2025.
+//
+
+import Testing
+@testable import ElKeyboard
+
+struct ElKeyboardTests {
+
+    @Test func example() async throws {
+        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    }
+
+}

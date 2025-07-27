@@ -6,59 +6,122 @@ struct ContentView: View {
     @State private var characterStats: [(character: String, count: Int)] = []
     @State private var showingResetAlert = false
     @State private var name = ""
+    @State private var savedMessages = ""
+    @State private var selectedTab = 0
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // Instructions
-                instructionsView
-                
-                // Total keystrokes
-                Text("Total Keystrokes: \(totalKeystrokes)")
-                    .font(.headline)
-                    .padding()
-                
-                // Character statistics
-                if characterStats.isEmpty {
-                    Text("No keystrokes recorded yet")
-                        .foregroundColor(.secondary)
+        TabView(selection: $selectedTab) {
+            // Statistics Tab
+            NavigationView {
+                VStack(spacing: 20) {
+                    // Instructions
+                    instructionsView
+                    
+                    // Total keystrokes
+                    Text("Total Keystrokes: \(totalKeystrokes)")
+                        .font(.headline)
                         .padding()
-                } else {
-                    statsListView
+                    
+                    // Character statistics
+                    if characterStats.isEmpty {
+                        Text("No keystrokes recorded yet")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else {
+                        statsListView
+                    }
+                    
+                    Spacer()
+                    
+                    TextField("Enter some text", text : $name)
+                    
+                    // Reset button
+                    Button(action: {
+                        // Show confirmation alert
+                        showingResetAlert = true
+                    }) {
+                        Text("Reset Statistics")
+                            .frame(minWidth: 200)
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .alert(isPresented: $showingResetAlert) {
+                        Alert(
+                            title: Text("Reset Statistics"),
+                            message: Text("Are you sure you want to reset all keystroke statistics?"),
+                            primaryButton: .destructive(Text("Reset")) {
+                                resetStats()
+                            },
+                            secondaryButton: .cancel()
+                        )
+                    }
                 }
-                
-                Spacer()
-                
-                TextField("Enter some text", text : $name)
-                
-                // Reset button
-                Button(action: {
-                    // Show confirmation alert
-                    showingResetAlert = true
-                }) {
-                    Text("Reset Statistics")
-                        .frame(minWidth: 200)
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                }
-                .alert(isPresented: $showingResetAlert) {
-                    Alert(
-                        title: Text("Reset Statistics"),
-                        message: Text("Are you sure you want to reset all keystroke statistics?"),
-                        primaryButton: .destructive(Text("Reset")) {
-                            resetStats()
-                        },
-                        secondaryButton: .cancel()
-                    )
+                .padding()
+                .navigationTitle("ElKeyboard Stats")
+                .onAppear {
+                    updateStats()
                 }
             }
-            .padding()
-            .navigationTitle("ElKeyboard Stats")
-            .onAppear {
-                updateStats()
+            .tabItem {
+                Image(systemName: "chart.bar")
+                Text("Statistics")
             }
+            .tag(0)
+            
+            // Messages Tab
+            NavigationView {
+                VStack {
+                    if savedMessages.isEmpty {
+                        Text("No messages saved yet")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else {
+                        ScrollView {
+                            Text(savedMessages)
+                                .font(.system(.body, design: .monospaced))
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        loadMessages()
+                    }) {
+                        Text("Refresh Messages")
+                            .frame(minWidth: 200)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    
+                    Button(action: {
+                        clearMessages()
+                    }) {
+                        Text("Clear All Messages")
+                            .frame(minWidth: 200)
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .padding(.top, 10)
+                }
+                .padding()
+                .navigationTitle("Saved Messages")
+                .onAppear {
+                    loadMessages()
+                }
+            }
+            .tabItem {
+                Image(systemName: "message")
+                Text("Messages")
+            }
+            .tag(1)
         }
     }
     
@@ -120,5 +183,16 @@ struct ContentView: View {
     private func resetStats() {
         KeyTracker.shared.resetCounts()
         updateStats()
+    }
+    
+    // Load saved messages
+    private func loadMessages() {
+        savedMessages = MessageSaver.shared.readMessages() ?? ""
+    }
+    
+    // Clear saved messages
+    private func clearMessages() {
+        MessageSaver.shared.clearMessages()
+        loadMessages()
     }
 }

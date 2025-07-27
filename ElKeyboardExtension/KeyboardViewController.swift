@@ -11,6 +11,7 @@ class KeyboardViewController: UIInputViewController {
     
     let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.ElKeyboard") // Replace with your group
     var keyCount = 0
+    var currentMessage = "" // Track the current message being typed
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -62,17 +63,56 @@ class KeyboardViewController: UIInputViewController {
         switch title {
         case "space":
             textDocumentProxy.insertText(" ")
+            currentMessage += " "
         case "⌫":
             textDocumentProxy.deleteBackward()
+            if !currentMessage.isEmpty {
+                currentMessage.removeLast()
+            }
         case "return":
             textDocumentProxy.insertText("\n")
+            // Message is complete, save it to file (don't add \n to currentMessage)
+            saveMessageToFile()
+            currentMessage = "" // Reset for next message
         case "123":
             // You could toggle symbol layout here
             break
         default:
             textDocumentProxy.insertText(title)
+            currentMessage += title
             keyCount += 1
             sharedDefaults?.set(keyCount, forKey: "totalKeyCount")
+        }
+    }
+    
+    // Save the completed message to a file with separator
+    private func saveMessageToFile() {
+        guard !currentMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        // Get the shared container directory
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.yourcompany.ElKeyboard") else {
+            print("Unable to access shared container")
+            return
+        }
+        
+        let messagesFileURL = containerURL.appendingPathComponent("messages.txt")
+        
+        // Prepare the message with separator
+        let messageWithSeparator = currentMessage + "\n------\n"
+        
+        // Write to file (append if exists, create if doesn't)
+        if FileManager.default.fileExists(atPath: messagesFileURL.path) {
+            // File exists, append to it
+            if let fileHandle = try? FileHandle(forWritingTo: messagesFileURL) {
+                fileHandle.seekToEndOfFile()
+                if let data = messageWithSeparator.data(using: .utf8) {
+                    fileHandle.write(data)
+                }
+                fileHandle.closeFile()
+            }
+        } else {
+            // File doesn't exist, create it
+            try? messageWithSeparator.write(to: messagesFileURL, atomically: true, encoding: .utf8)
         }
     }
 }

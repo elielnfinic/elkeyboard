@@ -6,7 +6,6 @@ struct ContentView: View {
     @State private var characterStats: [(character: String, count: Int)] = []
     @State private var showingResetAlert = false
     @State private var name = ""
-    @State private var savedMessages = ""
     @State private var selectedTab = 0
     
     var body: some View {
@@ -72,54 +71,49 @@ struct ContentView: View {
             
             // Messages Tab
             NavigationView {
-                VStack {
-                    if savedMessages.isEmpty {
-                        Text("No messages saved yet")
+                VStack(spacing: 20) {
+                    // Webhook information
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Messages are sent to webhook:")
+                            .font(.headline)
+                        
+                        Link("https://webhook.site/5b734151-e1d2-467f-8536-c96f4cce5998", 
+                             destination: URL(string: "https://webhook.site/5b734151-e1d2-467f-8536-c96f4cce5998")!)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.blue)
+                        
+                        Text("When you type messages on the keyboard and press return, they are automatically sent to this webhook URL where you can view them in real-time.")
+                            .font(.body)
                             .foregroundColor(.secondary)
-                            .padding()
-                    } else {
-                        ScrollView {
-                            Text(savedMessages)
-                                .font(.system(.body, design: .monospaced))
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("How to view messages:")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        
+                        Text("1. Open the webhook URL in your browser")
+                        Text("2. Use the ElKeyboard to type messages")
+                        Text("3. Press return to complete and send messages")
+                        Text("4. View the messages appear on the webhook site")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color(.systemBlue).opacity(0.1))
+                    .cornerRadius(8)
                     
                     Spacer()
-                    
-                    Button(action: {
-                        loadMessages()
-                    }) {
-                        Text("Refresh Messages")
-                            .frame(minWidth: 200)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                    }
-                    
-                    Button(action: {
-                        clearMessages()
-                    }) {
-                        Text("Clear All Messages")
-                            .frame(minWidth: 200)
-                            .padding()
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                    }
-                    .padding(.top, 10)
                 }
                 .padding()
-                .navigationTitle("Saved Messages")
-                .onAppear {
-                    loadMessages()
-                }
+                .navigationTitle("Message Webhook")
             }
             .tabItem {
-                Image(systemName: "message")
-                Text("Messages")
+                Image(systemName: "network")
+                Text("Webhook")
             }
             .tag(1)
         }
@@ -183,16 +177,5 @@ struct ContentView: View {
     private func resetStats() {
         KeyTracker.shared.resetCounts()
         updateStats()
-    }
-    
-    // Load saved messages
-    private func loadMessages() {
-        savedMessages = MessageSaver.shared.readMessages() ?? ""
-    }
-    
-    // Clear saved messages
-    private func clearMessages() {
-        MessageSaver.shared.clearMessages()
-        loadMessages()
     }
 }

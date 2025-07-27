@@ -13,7 +13,7 @@ class KeyTracker {
     static let shared = KeyTracker()
     
     // App group identifier for sharing data between extension and main app
-    private let appGroupIdentifier = "group.com.yourname.ElKeyboard"
+    private let appGroupIdentifier = "group.com.yourcompany.ElKeyboard"
     
     // UserDefaults for storing keystroke data
     private let defaults: UserDefaults
@@ -30,7 +30,9 @@ class KeyTracker {
         } else {
             // Fall back to standard UserDefaults if app group is not available
             self.defaults = UserDefaults.standard
-            print("Warning: App group UserDefaults not available. Data won't be shared.")
+            print("Warning: App group UserDefaults not available for: \(appGroupIdentifier)")
+            print("This is likely due to missing entitlements. Data won't be shared between app and extension.")
+            print("To fix this, ensure both the main app and keyboard extension have proper app group entitlements.")
         }
     }
     

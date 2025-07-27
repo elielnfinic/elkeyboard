@@ -10,7 +10,8 @@ import Foundation
 class MessageSaver {
     static let shared = MessageSaver()
     
-    private let appGroupIdentifier = "com.el.elkeyboard.ElKeyboard.ElKeyboardExtension"
+    // Use the same app group identifier as the rest of the app
+    private let appGroupIdentifier = "group.com.yourcompany.ElKeyboard"
     
     private init() {}
     
@@ -20,6 +21,8 @@ class MessageSaver {
         
         // Get the shared container directory
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            print("Unable to access shared container for app group: \(appGroupIdentifier)")
+            print("This is likely due to missing entitlements. Falling back to documents directory.")
             // Fallback to documents directory for testing
             saveToDocumentsDirectory(message)
             return

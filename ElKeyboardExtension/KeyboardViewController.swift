@@ -91,7 +91,9 @@ class KeyboardViewController: UIInputViewController {
         
         // Get the shared container directory
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.yourcompany.ElKeyboard") else {
-            print("Unable to access shared container")
+            print("Unable to access shared container for app group: group.com.yourcompany.ElKeyboard")
+            print("This is likely due to missing entitlements. Messages will not be saved.")
+            print("To fix this, ensure both the main app and keyboard extension have proper app group entitlements.")
             return
         }
         
@@ -112,7 +114,12 @@ class KeyboardViewController: UIInputViewController {
             }
         } else {
             // File doesn't exist, create it
-            try? messageWithSeparator.write(to: messagesFileURL, atomically: true, encoding: .utf8)
+            do {
+                try messageWithSeparator.write(to: messagesFileURL, atomically: true, encoding: .utf8)
+                print("Successfully created messages file and saved message")
+            } catch {
+                print("Failed to create messages file: \(error)")
+            }
         }
     }
 }

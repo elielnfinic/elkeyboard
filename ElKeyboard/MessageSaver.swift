@@ -10,7 +10,7 @@ import Foundation
 class MessageSaver {
     static let shared = MessageSaver()
     
-    private let appGroupIdentifier = "group.com.yourcompany.ElKeyboard"
+    private let appGroupIdentifier = "com.el.elkeyboard.ElKeyboard.ElKeyboardExtension"
     
     private init() {}
     

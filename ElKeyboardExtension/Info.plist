@@ -6,12 +6,12 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-            <key>PrimaryAppInterface</key>
-            <string>ElKeyboard</string>
 			<key>IsASCIICapable</key>
 			<true/>
 			<key>PrefersRightToLeft</key>
 			<false/>
+			<key>PrimaryAppInterface</key>
+			<string>ElKeyboard</string>
 			<key>PrimaryLanguage</key>
 			<string>en-US</string>
 			<key>RequestsOpenAccess</key>

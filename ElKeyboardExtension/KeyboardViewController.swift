@@ -48,6 +48,10 @@ class KeyboardViewController: UIInputViewController {
     var hashDisplayView: UIView?
     var hashLabel: UILabel?
     
+    // iOS-style pop-over for key press feedback
+    var keyPopover: UIView?
+    var keyPopoverLabel: UILabel?
+    
     // ML-based features
     var keyPressPatterns: [String: Int] = [:]
     var nextKeyPredictions: [String: [String: Int]] = [:]
@@ -61,6 +65,7 @@ class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         sessionStartTime = Date() // Reset session time
         setupKeyboardAppearance()
+        setupKeyPopover()
         loadMLData()
         setupKeyboard()
     }
@@ -74,6 +79,37 @@ class KeyboardViewController: UIInputViewController {
         view.layer.shadowOffset = CGSize(width: 0, height: -1)
         view.layer.shadowRadius = 3
         view.layer.shadowOpacity = 0.1
+    }
+    
+    func setupKeyPopover() {
+        // Create iOS-style key popover for press feedback
+        keyPopover = UIView()
+        keyPopover!.backgroundColor = UIColor.white
+        keyPopover!.layer.cornerRadius = 12
+        keyPopover!.layer.shadowColor = UIColor.black.cgColor
+        keyPopover!.layer.shadowOffset = CGSize(width: 0, height: 3)
+        keyPopover!.layer.shadowRadius = 8
+        keyPopover!.layer.shadowOpacity = 0.3
+        keyPopover!.layer.borderWidth = 1
+        keyPopover!.layer.borderColor = UIColor.systemGray4.cgColor
+        keyPopover!.alpha = 0
+        keyPopover!.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(keyPopover!)
+        
+        // Create popover label
+        keyPopoverLabel = UILabel()
+        keyPopoverLabel!.textAlignment = .center
+        keyPopoverLabel!.font = UIFont.systemFont(ofSize: 32, weight: .medium)
+        keyPopoverLabel!.textColor = UIColor.label
+        keyPopoverLabel!.translatesAutoresizingMaskIntoConstraints = false
+        keyPopover!.addSubview(keyPopoverLabel!)
+        
+        NSLayoutConstraint.activate([
+            keyPopover!.widthAnchor.constraint(equalToConstant: 60),
+            keyPopover!.heightAnchor.constraint(equalToConstant: 80),
+            keyPopoverLabel!.centerXAnchor.constraint(equalTo: keyPopover!.centerXAnchor),
+            keyPopoverLabel!.centerYAnchor.constraint(equalTo: keyPopover!.centerYAnchor)
+        ])
     }
     
     func loadMLData() {
@@ -143,13 +179,15 @@ class KeyboardViewController: UIInputViewController {
         hashDisplayView = UIView()
         hashDisplayView!.backgroundColor = UIColor.systemGray6
         hashDisplayView!.layer.cornerRadius = 8
+        hashDisplayView!.layer.borderWidth = 1
+        hashDisplayView!.layer.borderColor = UIColor.systemGray4.cgColor
         hashDisplayView!.translatesAutoresizingMaskIntoConstraints = false
         hashDisplayView!.isHidden = true // Initially hidden
         container.addArrangedSubview(hashDisplayView!)
         
         // Create hash label
         hashLabel = UILabel()
-        hashLabel!.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        hashLabel!.font = UIFont.monospacedSystemFont(ofSize: 11, weight: .medium)
         hashLabel!.textColor = UIColor.systemBlue
         hashLabel!.textAlignment = .center
         hashLabel!.numberOfLines = 0
@@ -158,7 +196,7 @@ class KeyboardViewController: UIInputViewController {
         hashDisplayView!.addSubview(hashLabel!)
         
         NSLayoutConstraint.activate([
-            hashDisplayView!.heightAnchor.constraint(equalToConstant: 60),
+            hashDisplayView!.heightAnchor.constraint(equalToConstant: 70),
             hashLabel!.leadingAnchor.constraint(equalTo: hashDisplayView!.leadingAnchor, constant: 8),
             hashLabel!.trailingAnchor.constraint(equalTo: hashDisplayView!.trailingAnchor, constant: -8),
             hashLabel!.topAnchor.constraint(equalTo: hashDisplayView!.topAnchor, constant: 8),
@@ -169,6 +207,8 @@ class KeyboardViewController: UIInputViewController {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(hashTapped))
         hashDisplayView!.addGestureRecognizer(tapGesture)
         hashDisplayView!.isUserInteractionEnabled = true
+        
+        print("Hash display view setup completed") // Debug log
     }
     
     func setupCurrentLayout() {
@@ -258,7 +298,7 @@ class KeyboardViewController: UIInputViewController {
     }
     
     func configureButtonAppearance(_ button: UIButton, title: String, size: CGSize) {
-        // iOS-like styling with improved visual feedback
+        // Enhanced iOS-like styling with better visual feedback
         button.layer.cornerRadius = 8
         button.titleLabel?.font = UIFont.systemFont(ofSize: getFontSize(for: title), weight: .medium)
         
@@ -267,23 +307,24 @@ class KeyboardViewController: UIInputViewController {
         button.backgroundColor = colors.background
         button.setTitleColor(colors.text, for: .normal)
         
-        // Add shadow and border for better depth
+        // Enhanced shadow and border for better depth perception
         button.layer.shadowColor = UIColor.black.cgColor
         button.layer.shadowOffset = CGSize(width: 0, height: 2)
         button.layer.shadowRadius = 3
         button.layer.shadowOpacity = 0.15
         
-        // Add subtle border for definition
-        button.layer.borderWidth = 0.5
-        button.layer.borderColor = UIColor.systemGray4.cgColor
+        // More prominent border for better definition
+        button.layer.borderWidth = 0.8
+        button.layer.borderColor = UIColor.systemGray3.cgColor
         
         // Set title
         let displayTitle = getDisplayTitle(for: title)
         button.setTitle(displayTitle, for: .normal)
         
-        // Add highlight effect
+        // Add highlight effect with improved touch handling
         button.addTarget(self, action: #selector(keyTouchDown(_:)), for: .touchDown)
         button.addTarget(self, action: #selector(keyTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        button.addTarget(self, action: #selector(keyTouchUp(_:)), for: .touchDragExit)
     }
     
     func getKeyColors(for key: String) -> (background: UIColor, text: UIColor) {
@@ -333,28 +374,92 @@ class KeyboardViewController: UIInputViewController {
     }
     
     @objc func keyTouchDown(_ sender: UIButton) {
-        // Smooth press animation with better feedback
+        // Get the button's title for the popover
+        guard let title = sender.accessibilityIdentifier else { return }
+        let displayTitle = getDisplayTitle(for: title)
+        
+        // Show iOS-style popover above the key
+        showKeyPopover(for: sender, with: displayTitle)
+        
+        // Enhanced button press animation
         let originalBackground = sender.backgroundColor
         
-        UIView.animate(withDuration: 0.05, animations: {
-            sender.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
-            // Darken the background color for better visual feedback
+        UIView.animate(withDuration: 0.1, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: [.allowUserInteraction], animations: {
+            // More dramatic scale and color change
+            sender.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            
+            // Darken the background significantly for better tactile feedback
             if let color = originalBackground {
-                sender.backgroundColor = color.withAlphaComponent(0.7)
+                sender.backgroundColor = color.withBrightness(-0.3)
             }
+            
+            // Add subtle shadow increase
+            sender.layer.shadowOpacity = 0.4
+            sender.layer.shadowRadius = 6
         })
     }
     
     @objc func keyTouchUp(_ sender: UIButton) {
-        // Get original colors
+        // Hide the popover
+        hideKeyPopover()
+        
+        // Get original colors and appearance
         let title = sender.accessibilityIdentifier ?? ""
         let colors = getKeyColors(for: title)
         
-        // Smooth release animation with spring bounce
-        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1.2, options: [], animations: {
+        // Smooth release animation with strong spring bounce
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1.5, options: [.allowUserInteraction], animations: {
             sender.transform = CGAffineTransform.identity
             sender.backgroundColor = colors.background
+            
+            // Restore original shadow
+            sender.layer.shadowOpacity = 0.15
+            sender.layer.shadowRadius = 3
         })
+    }
+    
+    func showKeyPopover(for button: UIButton, with text: String) {
+        guard let keyPopover = keyPopover, let keyPopoverLabel = keyPopoverLabel else { return }
+        
+        // Set the popover content
+        if text.isEmpty {
+            keyPopoverLabel.text = "space"
+        } else {
+            keyPopoverLabel.text = text
+        }
+        
+        // Position the popover above the button
+        let buttonFrame = button.convert(button.bounds, to: view)
+        let popoverX = max(5, min(view.bounds.width - 65, buttonFrame.midX - 30)) // Keep within bounds
+        let popoverY = max(10, buttonFrame.minY - 90) // Position above the button
+        
+        // Update popover frame
+        keyPopover.frame = CGRect(x: popoverX, y: popoverY, width: 60, height: 80)
+        
+        // Bring popover to front
+        view.bringSubviewToFront(keyPopover)
+        
+        // Animate the popover appearance with dramatic effect
+        keyPopover.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+        UIView.animate(withDuration: 0.12, delay: 0, usingSpringWithDamping: 0.5, initialSpringVelocity: 1.5, options: [], animations: {
+            keyPopover.alpha = 1.0
+            keyPopover.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+        }) { _ in
+            UIView.animate(withDuration: 0.08, animations: {
+                keyPopover.transform = CGAffineTransform.identity
+            })
+        }
+    }
+    
+    func hideKeyPopover() {
+        guard let keyPopover = keyPopover else { return }
+        
+        UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseInOut], animations: {
+            keyPopover.alpha = 0
+            keyPopover.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        }) { _ in
+            keyPopover.transform = CGAffineTransform.identity
+        }
     }
     
     @objc func keyPressed(_ sender: UIButton) {
@@ -395,7 +500,8 @@ class KeyboardViewController: UIInputViewController {
         currentMessage += " "
         updatePredictions()
         
-        // Generate and display hash
+        // Generate and display hash - with debug logging
+        print("Space key pressed, generating hash...")
         generateAndDisplayHash()
     }
     
@@ -613,17 +719,23 @@ class KeyboardViewController: UIInputViewController {
         // Create string to hash: input_text + duration_in_minutes + uuid
         let stringToHash = currentMessage + String(duration) + uuid
         
-        // Generate SHA3-256 hash
+        // Generate SHA256 hash (note: using SHA256 instead of SHA3 as requested since CryptoKit doesn't have SHA3)
         let data = stringToHash.data(using: .utf8) ?? Data()
         let hash = SHA256.hash(data: data)
         let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
         
-        // Display hash
-        hashLabel?.text = "Hash: \(hashString)\nTap to copy"
-        hashDisplayView?.isHidden = false
+        print("Generating hash for: '\(stringToHash)'") // Debug log
+        print("Generated hash: \(hashString)") // Debug log
         
-        // Store hash for copying
-        hashLabel?.accessibilityIdentifier = hashString
+        // Display hash
+        DispatchQueue.main.async {
+            self.hashLabel?.text = "Hash: \(hashString)\nTap to copy"
+            self.hashDisplayView?.isHidden = false
+            print("Hash display view should now be visible") // Debug log
+            
+            // Store hash for copying
+            self.hashLabel?.accessibilityIdentifier = hashString
+        }
     }
     
     @objc func hashTapped() {
@@ -633,7 +745,7 @@ class KeyboardViewController: UIInputViewController {
         UIPasteboard.general.string = hash
         
         // Show feedback
-        hashLabel?.text = "Hash copied to clipboard!\n\(hash)"
+        hashLabel?.text = "✓ Hash copied!\n\(hash)"
         
         // Restore original text after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -643,5 +755,20 @@ class KeyboardViewController: UIInputViewController {
         // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
+    }
+}
+
+// MARK: - UIColor Extension for brightness adjustment
+extension UIColor {
+    func withBrightness(_ brightness: CGFloat) -> UIColor {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var currentBrightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        
+        if getHue(&hue, saturation: &saturation, brightness: &currentBrightness, alpha: &alpha) {
+            return UIColor(hue: hue, saturation: saturation, brightness: max(0, min(1, currentBrightness + brightness)), alpha: alpha)
+        }
+        return self
     }
 }

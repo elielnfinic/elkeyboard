@@ -12,28 +12,17 @@ class KeyTracker {
     // Shared instance for access across app components
     static let shared = KeyTracker()
     
-    // App group identifier for sharing data between extension and main app
-    private let appGroupIdentifier = "group.com.yourcompany.ElKeyboard"
-    
-    // UserDefaults for storing keystroke data
+    // UserDefaults for storing keystroke data (using standard to avoid XPC issues)
     private let defaults: UserDefaults
     
-    // Keys for storing data
-    private let totalKeystrokesKey = "totalKeystrokes"
-    private let characterCountsKey = "characterCounts"
+    // Keys for storing data with ElKeyboard prefix to avoid conflicts
+    private let totalKeystrokesKey = "ElKeyboard_totalKeystrokes"
+    private let characterCountsKey = "ElKeyboard_characterCounts"
     
-    // Initialize with app group UserDefaults
+    // Initialize with standard UserDefaults to avoid XPC connection issues
     init() {
-        // Get UserDefaults for the app group
-        if let groupDefaults = UserDefaults(suiteName: appGroupIdentifier) {
-            self.defaults = groupDefaults
-        } else {
-            // Fall back to standard UserDefaults if app group is not available
-            self.defaults = UserDefaults.standard
-            print("Warning: App group UserDefaults not available for: \(appGroupIdentifier)")
-            print("This is likely due to missing entitlements. Data won't be shared between app and extension.")
-            print("To fix this, ensure both the main app and keyboard extension have proper app group entitlements.")
-        }
+        self.defaults = UserDefaults.standard
+        print("KeyTracker: Using standard UserDefaults to avoid XPC connection issues")
     }
     
     // Track a key press

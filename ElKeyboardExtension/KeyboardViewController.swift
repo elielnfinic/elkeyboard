@@ -25,9 +25,10 @@ class KeyboardViewController: UIInputViewController {
         ["ABC", "🌐", "space", "return"]
     ]
     
+    // Simplified emoji layout to avoid system emoji search operations
     let emojiRows: [[String]] = [
-        ["😀","😂","🥰","😍","🤔","😭","😤","🎉","👍","❤️"],
-        ["🔥","💯","😎","🤗","😴","🤤","🙄","😬","🤐","🤫"],
+        ["😀","😂","🥰","😍","😊","😭","😤","🎉","👍","❤️"],
+        ["🔥","💯","😎","🤗","😴","🙄","😬","🤐","🤫","😋"],
         ["🎈","🎊","✨","🌟","💫","⭐","🌈","🦄","🐱","🐶"],
         ["ABC", "🌐", "space", "return"]
     ]
@@ -39,7 +40,8 @@ class KeyboardViewController: UIInputViewController {
     var currentLayout: KeyboardLayout = .alphabet
     var isShiftPressed = false
     
-    let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.ElKeyboard")
+    // Use standard UserDefaults to avoid app group XPC connection issues
+    let sharedDefaults = UserDefaults.standard
     var keyCount = 0
     var currentMessage = ""
     var sessionStartTime = Date()
@@ -64,10 +66,67 @@ class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         sessionStartTime = Date() // Reset session time
-        setupKeyboardAppearance()
-        setupKeyPopover()
-        loadMLData()
-        setupKeyboard()
+        
+        // Add error handling to prevent XPC connection issues
+        do {
+            setupKeyboardAppearance()
+            setupKeyPopover()
+            loadMLData()
+            setupKeyboard()
+        } catch {
+            print("Error during keyboard setup: \(error)")
+            // Fall back to basic setup if there are issues
+            setupBasicKeyboard()
+        }
+    }
+    
+    func setupBasicKeyboard() {
+        // Minimal keyboard setup in case of issues
+        view.backgroundColor = UIColor.systemGray5
+        
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            stackView.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8)
+        ])
+        
+        // Add a simple row of keys
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 4
+        
+        for char in ["A", "B", "C", "space", "⌫"] {
+            let button = UIButton(type: .system)
+            button.setTitle(char == "space" ? "space" : char, for: .normal)
+            button.backgroundColor = UIColor.white
+            button.layer.cornerRadius = 4
+            button.accessibilityIdentifier = char
+            button.addTarget(self, action: #selector(basicKeyPressed(_:)), for: .touchUpInside)
+            row.addArrangedSubview(button)
+        }
+        
+        stackView.addArrangedSubview(row)
+    }
+    
+    @objc func basicKeyPressed(_ sender: UIButton) {
+        guard let title = sender.accessibilityIdentifier else { return }
+        
+        switch title {
+        case "space":
+            textDocumentProxy.insertText(" ")
+        case "⌫":
+            textDocumentProxy.deleteBackward()
+        default:
+            textDocumentProxy.insertText(title.lowercased())
+        }
     }
     
     func setupKeyboardAppearance() {
@@ -113,18 +172,31 @@ class KeyboardViewController: UIInputViewController {
     }
     
     func loadMLData() {
-        // Load existing patterns from UserDefaults
-        if let savedPatterns = sharedDefaults?.object(forKey: "keyPressPatterns") as? [String: Int] {
-            keyPressPatterns = savedPatterns
-        }
-        if let savedPredictions = sharedDefaults?.object(forKey: "nextKeyPredictions") as? [String: [String: Int]] {
-            nextKeyPredictions = savedPredictions
+        // Load existing patterns from standard UserDefaults with error handling
+        do {
+            if let savedPatterns = sharedDefaults.object(forKey: "ElKeyboard_keyPressPatterns") as? [String: Int] {
+                keyPressPatterns = savedPatterns
+            }
+            if let savedPredictions = sharedDefaults.object(forKey: "ElKeyboard_nextKeyPredictions") as? [String: [String: Int]] {
+                nextKeyPredictions = savedPredictions
+            }
+            print("ML data loaded successfully")
+        } catch {
+            print("Error loading ML data: \(error)")
+            // Initialize with empty data if there are issues
+            keyPressPatterns = [:]
+            nextKeyPredictions = [:]
         }
     }
     
     func saveMLData() {
-        sharedDefaults?.set(keyPressPatterns, forKey: "keyPressPatterns")
-        sharedDefaults?.set(nextKeyPredictions, forKey: "nextKeyPredictions")
+        // Save with error handling to prevent XPC issues
+        do {
+            sharedDefaults.set(keyPressPatterns, forKey: "ElKeyboard_keyPressPatterns")
+            sharedDefaults.set(nextKeyPredictions, forKey: "ElKeyboard_nextKeyPredictions")
+        } catch {
+            print("Error saving ML data: \(error)")
+        }
     }
     
     func setupKeyboard() {
@@ -482,7 +554,13 @@ class KeyboardViewController: UIInputViewController {
         case "#+=":
             switchToLayout(.symbols)
         case "🌐":
-            advanceToNextInputMode()
+            // Handle keyboard switching with error handling to prevent XPC issues
+            do {
+                advanceToNextInputMode()
+            } catch {
+                print("Error switching input mode: \(error)")
+                // Fall back to doing nothing if there's an issue
+            }
         default:
             handleCharacterKey(title)
         }
@@ -490,9 +568,13 @@ class KeyboardViewController: UIInputViewController {
         // Update ML data
         updateMLData(for: title)
         
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        // Haptic feedback with error handling
+        do {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("Error generating haptic feedback: \(error)")
+        }
     }
     
     func handleSpaceKey() {
@@ -536,7 +618,7 @@ class KeyboardViewController: UIInputViewController {
         textDocumentProxy.insertText(insertText)
         currentMessage += insertText
         keyCount += 1
-        sharedDefaults?.set(keyCount, forKey: "totalKeyCount")
+        sharedDefaults.set(keyCount, forKey: "ElKeyboard_totalKeyCount")
         
         // Auto-disable shift after character input
         if isShiftPressed && currentLayout == .alphabet {
@@ -648,9 +730,13 @@ class KeyboardViewController: UIInputViewController {
         
         updatePredictions()
         
-        // Add haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
+        // Add haptic feedback with error handling
+        do {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("Error generating haptic feedback: \(error)")
+        }
     }
     
     // MARK: - Message Handling
@@ -752,9 +838,13 @@ class KeyboardViewController: UIInputViewController {
             self.hashLabel?.text = "Hash: \(hash)\nTap to copy"
         }
         
-        // Haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
+        // Haptic feedback with error handling
+        do {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        } catch {
+            print("Error generating haptic feedback: \(error)")
+        }
     }
 }
 

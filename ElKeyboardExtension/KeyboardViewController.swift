@@ -1,4 +1,5 @@
 import UIKit
+import CryptoKit
 
 class KeyboardViewController: UIInputViewController {
     
@@ -41,6 +42,11 @@ class KeyboardViewController: UIInputViewController {
     let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.ElKeyboard")
     var keyCount = 0
     var currentMessage = ""
+    var sessionStartTime = Date()
+    
+    // Hash display
+    var hashDisplayView: UIView?
+    var hashLabel: UILabel?
     
     // ML-based features
     var keyPressPatterns: [String: Int] = [:]
@@ -53,14 +59,15 @@ class KeyboardViewController: UIInputViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        sessionStartTime = Date() // Reset session time
         setupKeyboardAppearance()
         loadMLData()
         setupKeyboard()
     }
     
     func setupKeyboardAppearance() {
-        // iOS-like keyboard appearance
-        view.backgroundColor = UIColor.systemGray6
+        // iOS-like keyboard appearance with better background
+        view.backgroundColor = UIColor.systemGray5
         
         // Add subtle shadow
         view.layer.shadowColor = UIColor.black.cgColor
@@ -105,6 +112,9 @@ class KeyboardViewController: UIInputViewController {
         keyboardStack!.translatesAutoresizingMaskIntoConstraints = false
         mainContainer.addArrangedSubview(keyboardStack!)
         
+        // Setup hash display view
+        setupHashDisplayView(container: mainContainer)
+        
         NSLayoutConstraint.activate([
             mainContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
             mainContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
@@ -127,6 +137,38 @@ class KeyboardViewController: UIInputViewController {
         ])
         
         updatePredictions()
+    }
+    
+    func setupHashDisplayView(container: UIStackView) {
+        hashDisplayView = UIView()
+        hashDisplayView!.backgroundColor = UIColor.systemGray6
+        hashDisplayView!.layer.cornerRadius = 8
+        hashDisplayView!.translatesAutoresizingMaskIntoConstraints = false
+        hashDisplayView!.isHidden = true // Initially hidden
+        container.addArrangedSubview(hashDisplayView!)
+        
+        // Create hash label
+        hashLabel = UILabel()
+        hashLabel!.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+        hashLabel!.textColor = UIColor.systemBlue
+        hashLabel!.textAlignment = .center
+        hashLabel!.numberOfLines = 0
+        hashLabel!.lineBreakMode = .byCharWrapping
+        hashLabel!.translatesAutoresizingMaskIntoConstraints = false
+        hashDisplayView!.addSubview(hashLabel!)
+        
+        NSLayoutConstraint.activate([
+            hashDisplayView!.heightAnchor.constraint(equalToConstant: 60),
+            hashLabel!.leadingAnchor.constraint(equalTo: hashDisplayView!.leadingAnchor, constant: 8),
+            hashLabel!.trailingAnchor.constraint(equalTo: hashDisplayView!.trailingAnchor, constant: -8),
+            hashLabel!.topAnchor.constraint(equalTo: hashDisplayView!.topAnchor, constant: 8),
+            hashLabel!.bottomAnchor.constraint(equalTo: hashDisplayView!.bottomAnchor, constant: -8)
+        ])
+        
+        // Add tap gesture to copy hash
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(hashTapped))
+        hashDisplayView!.addGestureRecognizer(tapGesture)
+        hashDisplayView!.isUserInteractionEnabled = true
     }
     
     func setupCurrentLayout() {
@@ -216,7 +258,7 @@ class KeyboardViewController: UIInputViewController {
     }
     
     func configureButtonAppearance(_ button: UIButton, title: String, size: CGSize) {
-        // iOS-like styling
+        // iOS-like styling with improved visual feedback
         button.layer.cornerRadius = 8
         button.titleLabel?.font = UIFont.systemFont(ofSize: getFontSize(for: title), weight: .medium)
         
@@ -225,11 +267,15 @@ class KeyboardViewController: UIInputViewController {
         button.backgroundColor = colors.background
         button.setTitleColor(colors.text, for: .normal)
         
-        // Add shadow for depth
+        // Add shadow and border for better depth
         button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOffset = CGSize(width: 0, height: 1)
-        button.layer.shadowRadius = 1
-        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 3
+        button.layer.shadowOpacity = 0.15
+        
+        // Add subtle border for definition
+        button.layer.borderWidth = 0.5
+        button.layer.borderColor = UIColor.systemGray4.cgColor
         
         // Set title
         let displayTitle = getDisplayTitle(for: title)
@@ -243,13 +289,13 @@ class KeyboardViewController: UIInputViewController {
     func getKeyColors(for key: String) -> (background: UIColor, text: UIColor) {
         switch key {
         case "⌫", "⇧", "123", "ABC", "#+=":
-            return (UIColor.systemGray3, UIColor.label)
-        case "🌐":
             return (UIColor.systemGray4, UIColor.label)
+        case "🌐":
+            return (UIColor.systemGray3, UIColor.label)
         case "return":
             return (UIColor.systemBlue, UIColor.white)
         case "space":
-            return (UIColor.systemGray2, UIColor.label)
+            return (UIColor.white, UIColor.label)
         default:
             return (UIColor.white, UIColor.label)
         }
@@ -287,18 +333,27 @@ class KeyboardViewController: UIInputViewController {
     }
     
     @objc func keyTouchDown(_ sender: UIButton) {
-        // Smooth press animation
-        UIView.animate(withDuration: 0.1, animations: {
-            sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
-            sender.alpha = 0.8
+        // Smooth press animation with better feedback
+        let originalBackground = sender.backgroundColor
+        
+        UIView.animate(withDuration: 0.05, animations: {
+            sender.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+            // Darken the background color for better visual feedback
+            if let color = originalBackground {
+                sender.backgroundColor = color.withAlphaComponent(0.7)
+            }
         })
     }
     
     @objc func keyTouchUp(_ sender: UIButton) {
-        // Smooth release animation
-        UIView.animate(withDuration: 0.15, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: [], animations: {
+        // Get original colors
+        let title = sender.accessibilityIdentifier ?? ""
+        let colors = getKeyColors(for: title)
+        
+        // Smooth release animation with spring bounce
+        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.4, initialSpringVelocity: 1.2, options: [], animations: {
             sender.transform = CGAffineTransform.identity
-            sender.alpha = 1.0
+            sender.backgroundColor = colors.background
         })
     }
     
@@ -339,6 +394,9 @@ class KeyboardViewController: UIInputViewController {
         textDocumentProxy.insertText(" ")
         currentMessage += " "
         updatePredictions()
+        
+        // Generate and display hash
+        generateAndDisplayHash()
     }
     
     func handleDeleteKey() {
@@ -541,5 +599,49 @@ class KeyboardViewController: UIInputViewController {
                 }
             }
         }.resume()
+    }
+    
+    // MARK: - Hash Generation and Display
+    
+    func generateAndDisplayHash() {
+        // Calculate duration in minutes
+        let duration = Int(Date().timeIntervalSince(sessionStartTime) / 60)
+        
+        // Generate random UUID
+        let uuid = UUID().uuidString
+        
+        // Create string to hash: input_text + duration_in_minutes + uuid
+        let stringToHash = currentMessage + String(duration) + uuid
+        
+        // Generate SHA3-256 hash
+        let data = stringToHash.data(using: .utf8) ?? Data()
+        let hash = SHA256.hash(data: data)
+        let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
+        
+        // Display hash
+        hashLabel?.text = "Hash: \(hashString)\nTap to copy"
+        hashDisplayView?.isHidden = false
+        
+        // Store hash for copying
+        hashLabel?.accessibilityIdentifier = hashString
+    }
+    
+    @objc func hashTapped() {
+        guard let hash = hashLabel?.accessibilityIdentifier else { return }
+        
+        // Copy to clipboard
+        UIPasteboard.general.string = hash
+        
+        // Show feedback
+        hashLabel?.text = "Hash copied to clipboard!\n\(hash)"
+        
+        // Restore original text after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.hashLabel?.text = "Hash: \(hash)\nTap to copy"
+        }
+        
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
     }
 }

